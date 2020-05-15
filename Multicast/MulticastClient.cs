@@ -7,32 +7,48 @@ using System.Text;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.Networking;
-using Windows.Networking.Connectivity;
 using Windows.Networking.Sockets;
 using Windows.Storage.Streams;
 
 namespace Multicast
 {
-    public class MulticastClient : AbstractMulticastSocket
+    public class MulticastClient
     {
         public TypedEventHandler<MulticastClient, EndpointInformation> ServerDiscovered;
+
+        protected ServerInformation information;
+        protected DatagramSocket socket;
 
         public async Task Discover()
         {
             if (socket != null)
             {
-                EndpointInformation message = new EndpointInformation()
-                {
-                    Name = GetComputerName(),
-                    Address = information.LocalAddress,
-                    Type = EndpointType.Client
-                };
-
-                await SendMessage(message);
+                throw new InvalidOperationException();
             }
+
+            EndpointInformation message = new EndpointInformation()
+            {
+                Address = information.LocalAddress,
+                Type = EndpointType.Client
+            };
+
+            await SendMessage(message);
         }
 
-        protected override void OnMessageReceived(DatagramSocket sender, DatagramSocketMessageReceivedEventArgs args)
+        public async Task Bind(string localAddress, string multicastAddress, string multicastPort)
+        {
+            information = new ServerInformation(localAddress, multicastAddress, multicastPort);
+
+            socket = new DatagramSocket();
+            socket.Control.MulticastOnly = true;
+
+            await socket.BindEndpointAsync(new HostName(information.LocalAddress), information.MulticastPort);
+            socket.JoinMulticastGroup(new HostName(information.MulticastAddress));
+
+            socket.MessageReceived += OnMessageReceived;
+        }
+
+        protected void OnMessageReceived(DatagramSocket sender, DatagramSocketMessageReceivedEventArgs args)
         {
             string remoteAddress = args.RemoteAddress.CanonicalName;
 
@@ -55,6 +71,24 @@ namespace Multicast
                 {
                     ServerDiscovered?.Invoke(this, message);
                 }
+            }
+        }
+
+        protected async Task SendMessage(EndpointInformation message)
+        {
+            EndpointPair endpoint = new EndpointPair(
+                new HostName(information.LocalAddress),
+                information.MulticastPort,
+                new HostName(information.MulticastAddress),
+                information.MulticastPort
+            );
+
+            using (IOutputStream outputStream = await socket.GetOutputStreamAsync(endpoint))
+            using (DataWriter writer = new DataWriter(outputStream))
+            {
+                byte[] data = message.Serialize();
+                writer.WriteBytes(data);
+                await writer.StoreAsync();
             }
         }
     }

@@ -120,7 +120,6 @@
     <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="AbstractMulticastSocket.cs" />
     <Compile Include="Endpoint\EndpointType.cs" />
     <Compile Include="MulticastClient.cs" />
     <Compile Include="Endpoint\EndpointInformation.cs" />

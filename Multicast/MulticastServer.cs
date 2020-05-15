@@ -5,16 +5,18 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Windows.Foundation;
 using Windows.Networking;
-using Windows.Networking.Connectivity;
 using Windows.Networking.Sockets;
 using Windows.Storage.Streams;
 
 namespace Multicast
 {
-    public class MulticastServer : AbstractMulticastSocket
+    public class MulticastServer
     {
+        protected ServerInformation information;
+        protected DatagramSocket socket;
+        protected Guid taskId;
+
         public MulticastServer(Guid taskId)
         {
             this.taskId = taskId;
@@ -22,6 +24,20 @@ namespace Multicast
 
         protected MulticastServer()
         {
+        }
+
+        public async Task Bind(string localAddress, string multicastAddress, string multicastPort)
+        {
+            information = new ServerInformation(localAddress, multicastAddress, multicastPort);
+
+            socket = new DatagramSocket();
+            socket.Control.MulticastOnly = true;
+            socket.EnableTransferOwnership(taskId);
+
+            await socket.BindEndpointAsync(new HostName(information.LocalAddress), information.MulticastPort);
+            socket.JoinMulticastGroup(new HostName(information.MulticastAddress));
+
+            socket.MessageReceived += OnMessageReceived;
         }
 
         public async Task TransferOwnership()
@@ -45,12 +61,7 @@ namespace Multicast
             }
         }
 
-        protected override async void OnMessageReceived(DatagramSocket sender, DatagramSocketMessageReceivedEventArgs args)
-        {
-            await ProcessMessage(args);
-        }
-
-        protected async Task ProcessMessage(DatagramSocketMessageReceivedEventArgs args)
+        private async void OnMessageReceived(DatagramSocket sender, DatagramSocketMessageReceivedEventArgs args)
         {
             string remoteAddress = args.RemoteAddress.CanonicalName;
 
@@ -74,7 +85,6 @@ namespace Multicast
                     {
                         message = new EndpointInformation()
                         {
-                            Name = GetComputerName(),
                             Address = information.LocalAddress,
                             Type = EndpointType.Server
                         };
@@ -82,6 +92,24 @@ namespace Multicast
                         await SendMessage(message);
                     }
                 }
+            }
+        }
+
+        protected async Task SendMessage(EndpointInformation message)
+        {
+            EndpointPair endpoint = new EndpointPair(
+                new HostName(information.LocalAddress),
+                information.MulticastPort,
+                new HostName(information.MulticastAddress),
+                information.MulticastPort
+            );
+
+            using (IOutputStream outputStream = await socket.GetOutputStreamAsync(endpoint))
+            using (DataWriter writer = new DataWriter(outputStream))
+            {
+                byte[] data = message.Serialize();
+                writer.WriteBytes(data);
+                await writer.StoreAsync();
             }
         }
     }

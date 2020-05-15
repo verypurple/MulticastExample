@@ -5,6 +5,8 @@ using System.Linq;
 using System.Runtime.Serialization;
 using System.Text;
 using System.Threading.Tasks;
+using Windows.Networking;
+using Windows.Networking.Connectivity;
 
 namespace Multicast
 {
@@ -19,6 +21,14 @@ namespace Multicast
 
         [DataMember]
         public EndpointType Type { get; set; }
+
+        public EndpointInformation()
+        {
+            Name = NetworkInformation.GetHostNames()
+                .Where(h => h.Type == HostNameType.DomainName)
+                .Select(h => h.DisplayName)
+                .First();
+        }
 
         public byte[] Serialize()
         {
